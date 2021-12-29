@@ -1,0 +1,2 @@
+#harrison@dragon
+export LD_LIBRARY_PATH=/home/harrison/Documents/computer/cpp_packages/shared_object_lib/
