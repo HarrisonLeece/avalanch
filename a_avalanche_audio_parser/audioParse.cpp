@@ -107,7 +107,7 @@ void unitTests(int psdInSize)
   //load the 100hz data so I can access some file info
   soundData clip_100hz;
   clip_100hz.parse_header_and_body(filePath);
-  double modifier = (clip_100hz.wavHeader.SamplesPerSec)/pow(2,psdInSizePower+1);
+  double modifier = (clip_100hz.wavHeader.SamplesPerSec)/pow(2,psdInSizePower);
   vector<double> psdX = linspace(0,(psdInSize/2-1)*modifier,psdInSize/2);
   vector<double> waveX = linspace(0,psdInSize-1, psdInSize);
 
@@ -244,48 +244,44 @@ void unitTests32bit(int psdInSize)
   char* filePath;
   filePath = "../tests/110Hz_44100Hz_32bit_05sec_waveform.wav";
   int psdInSizePower = int(log2(psdInSize));
-  cout << psdInSizePower << endl;
+  cout << "PSDInSizePower: " << psdInSizePower << endl;
   vector<int> waveform(psdInSize);
   vector<float> psd(psdInSize/2);
 
-
   //load the 100hz data so I can access some file info
   soundData clip_110hz;
+  clip_110hz.float32 = true;
   clip_110hz.parse_header_and_body(filePath);
-  double modifier = (clip_110hz.wavHeader.SamplesPerSec)/pow(2,psdInSizePower+1);
+  double modifier = (clip_110hz.wavHeader.SamplesPerSec)/pow(2,psdInSizePower);
   vector<double> psdX = linspace(0,(psdInSize/2-1)*modifier,psdInSize/2);
   vector<double> waveX = linspace(0,psdInSize-1, psdInSize);
 
-
-
-  auto f1 = figure(true);
-  f1->width(f1->width() * 2);
-  f1->height(f1->height() * 1);
-  f1->x_position(10);
-  f1->y_position(10);
   hold(on);
 
   waveform = sliceVectorInt(clip_110hz.retreiveWaveChannel(),0,psdInSize-1);
 
   psd = power_spec_density(waveform, psdInSizePower);
 
-  //100 hz tests
-  subplot(2, 1, 0);
-  xlabel("Amplitude");
+  auto f5 = figure(true);
+  f5->width(f5->width() * 2);
+  f5->height(f5->height() * 1);
+  f5->x_position(10);
+  f5->y_position(10);
 
-  ylabel("Sample");
+  //110 hz tests
+  subplot(2, 1, 0);
+  xlabel("Samples");
+  ylabel("Amplitude");
   title("110hz waveform");
-  plot(waveX,waveform)->color({0.f, 0.7f, 0.9f});
+  plot(waveX, waveform);
 
   subplot(2, 1, 1);
   xlabel("Frequency");
-  xlim({0,200});
   ylabel("Value");
-  title("110hz PSD");
+  xlim({0,200});
   plot(psdX,psd)->color({0.9f, 0.f, 0.1f});
 
-  f1->draw();
-
+  f5->draw();
   show();
 }
 
@@ -302,7 +298,7 @@ int main()
     bool isTesting = true;
     if (isTesting) {
       cout << "16 bit & PSD Tests starting" << endl;
-      //unitTests(samplesPerPSD);
+      unitTests(samplesPerPSD);
       cout << "Test 1 complete" << endl;
       cout << "32 bit Tests starting" << endl;
       unitTests32bit(samplesPerPSD);

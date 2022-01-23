@@ -28,6 +28,7 @@ using namespace std;
 // Structure of the header of the .wav
 typedef struct  WAV_HEADER
 {
+    //http://www-mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
     /* RIFF Chunk Descriptor */
     uint8_t         RIFF[4];        // RIFF Header Magic header
     uint32_t        ChunkSize;      // RIFF Chunk Size
@@ -46,6 +47,43 @@ typedef struct  WAV_HEADER
     uint32_t        Subchunk2Size;  // Sampled data length
 } wav_hdr;
 
+// Structure of the header of the .wav
+typedef struct  smpl_HEADER
+{
+    //https://sites.google.com/site/musicgapi/technical-documents/wav-file-format#smpl
+    /* smpl format Chunk Descriptor */
+    uint32_t manufacturer;
+    uint32_t product;
+    uint32_t sample_period;
+    uint32_t midi_unity_note; //Even tho its 4bytes, value is between 0 and 127
+    uint32_t midi_pitch_fraction;
+    uint32_t smpte_format;
+    uint32_t smpte_offset;
+    uint32_t num_sample_loops;
+    uint32_t sampler_data;
+} smpl_hdr;
+
+typedef struct  WAV_HEADER_EXTENSIBLE
+{
+    //http://www-mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
+    /* RIFF Chunk Descriptor */
+    uint8_t         RIFF[4];        // RIFF Header Magic header
+    uint32_t        ChunkSize;      // RIFF Chunk Size
+    uint8_t         WAVE[4];        // WAVE Header
+    /* "fmt" sub-chunk */
+    uint8_t         fmt[4];         // FMT header
+    uint32_t        Subchunk1Size;  // Size of the fmt chunk
+    uint16_t        AudioFormat;    // Audio format 1=PCM,6=mulaw,7=alaw,     257=IBM Mu-Law, 258=IBM A-Law, 259=ADPCM
+    uint16_t        NumOfChan;      // Number of channels 1=Mono 2=Sterio
+    uint32_t        SamplesPerSec;  // Sampling Frequency in Hz
+    uint32_t        bytesPerSec;    // bytes per second
+    uint16_t        blockAlign;     // 2=16-bit mono, 4=16-bit stereo
+    uint16_t        bitsPerSample;  // Number of bits per sample
+    /* "data" sub-chunk */
+    uint8_t         Subchunk2ID[4]; // "data"  string
+    uint32_t        Subchunk2Size;  // Sampled data length
+} wav_hdr_ex;
+
 
 class soundData
 {
@@ -53,11 +91,17 @@ class soundData
     //Initialize all my 'instance variables'
     char * filePath;
     wav_hdr wavHeader;
+    smpl_hdr smplData; //For SubChunk2ID = 'smpl'
     vector<int> left_channel;
     vector<int> right_channel;
     vector<int> mono_channel;
+    vector<float> mono_channelf;
+    vector<float> left_channelf;
+    vector<float> right_channelf;
     //Troubleshooting; but it will saturate the whole console cache
     //print_vector_to_console(left_channel);
+
+    bool float32 = false;
 
     //Declare class functions.  Remember soundData:: prefix to functions
     int getFileSize(FILE* inFile);
@@ -101,12 +145,41 @@ void soundData::read_header(fstream &wav){
   wav.read((char*)&wavHeader.Subchunk2ID, sizeof(wavHeader.Subchunk2ID));
   //Subchunk2Size
   wav.read((char*)&wavHeader.Subchunk2Size, sizeof(wavHeader.Subchunk2Size));
+
+  if (wavHeader.AudioFormat != 1 && wavHeader.Subchunk2ID[0] == 's' && wavHeader.Subchunk2ID[1] == 'm' && wavHeader.Subchunk2ID[2] == 'p' && wavHeader.Subchunk2ID[3] == 'l')
+  {
+    cout << "Additional processing is needed as this header indicates an audio format not equal to 1 (PCM)" << endl;
+    cout << "smpl format detected.  Used to encode extra midi data to wav" << endl;
+
+    wav.read((char*)&smplData.manufacturer, sizeof(smplData.manufacturer));
+    wav.read((char*)&smplData.product, sizeof(smplData.product));
+    wav.read((char*)&smplData.sample_period, sizeof(smplData.sample_period));
+    wav.read((char*)&smplData.midi_unity_note, sizeof(smplData.midi_unity_note));
+    wav.read((char*)&smplData.midi_pitch_fraction, sizeof(smplData.midi_pitch_fraction));
+    wav.read((char*)&smplData.smpte_format, sizeof(smplData.smpte_format));
+    wav.read((char*)&smplData.smpte_offset, sizeof(smplData.smpte_offset));
+    wav.read((char*)&smplData.num_sample_loops, sizeof(smplData.num_sample_loops));
+    wav.read((char*)&smplData.sampler_data, sizeof(smplData.sampler_data));
+    cout << "Sampler data: " << smplData.sampler_data << endl << endl;
+  }
+  else {
+    cout << "As of yet unsupported extensible wav data detected" << endl;
+    cout<<wavHeader.Subchunk2ID[0]<<wavHeader.Subchunk2ID[1]<<wavHeader.Subchunk2ID[2]<<wavHeader.Subchunk2ID[3]<<endl;
+  }
+  bool testing = true;
+  size_t remove_bytes = 60;
+  uint8_t extraData[remove_bytes];
+
+  if(testing){
+    cout << "removing extra data of size " << remove_bytes << " bytes" << endl;
+    wav.read((char*)&extraData, sizeof(extraData));
+  }
 }
 
 // find the file size
 int soundData::getFileSize(FILE* inFile)
 {
-    int fileSize = 0;
+    int fileSize = 60;
     fseek(inFile, 0, SEEK_END);
 
     fileSize = ftell(inFile);
@@ -139,13 +212,21 @@ void soundData::mono_parser(uint16_t bytesPerSamp, fstream &wav){
     }
   } else if (bytesPerSamp==3) {
     cerr << "Number of bytes " << bytesPerSamp << " unsupported" << endl;
-  } else if (bytesPerSamp==4) {
-    int32_t * buffer  = new int32_t[1];
+  } else if (bytesPerSamp==4 && !float32) {
+    uint32_t * buffer  = new uint32_t[1];
     while (blocksRead>0) {
       wav.read((char*)buffer, sizeof(*buffer));
       if (wav.eof()) { break; }
       int left = *buffer;
       mono_channel.push_back(left);
+    }
+  } else if (bytesPerSamp==4 && float32) {
+    float * buffer  = new float[1];
+    while (blocksRead>0) {
+      wav.read((char*)buffer, sizeof(*buffer));
+      if (wav.eof()) { break; }
+      float left = *buffer;
+      mono_channelf.push_back(left);
     }
   } else {
     cerr << "Number of bytes " << bytesPerSamp << " unsupported" << endl;
@@ -173,18 +254,31 @@ void soundData::stereo_parser(uint16_t bytesPerSamp, fstream &wav){
     }
   } else if (bytesPerSamp==3) {
     cerr << "Number of bytes " << bytesPerSamp << " unsupported in stereo" << endl;
-  } else if (bytesPerSamp==4) {
-    int32_t * buffer  = new int32_t[1];
-    //cout << bytesRead << endl;
-    while (!wav.eof()) {
-      if (wav.eof()) { break; }
+  } else if (bytesPerSamp==4 && !float32) {
+    cout << "Running bytesPerSampe == 4 integer " << endl;
+    float * buffer  = new float[1];
+    while(!wav.eof()){
       wav.read((char*)buffer, sizeof(*buffer));
-      int left = *buffer;
+      float left = *buffer;
       left_channel.push_back(left);
       if (wav.eof()) { break; } //This is just in case right and left channel has mismatching data for some reason 0_o
+
       wav.read((char*)buffer, sizeof(*buffer));
       int right = *buffer;
       right_channel.push_back(right);
+    }
+  } else if (bytesPerSamp==4 && float32) {
+    cout << "Running bytesPerSampe == 4 float " << endl;
+    float * buffer  = new float[1];
+    while (!wav.eof()) {
+      wav.read((char*)buffer, sizeof(*buffer));
+      float left = *buffer;
+      left_channelf.push_back(left);
+      if (wav.eof()) { break; } //This is just in case right and left channel has mismatching data for some reason 0_o
+
+      wav.read((char*)buffer, sizeof(*buffer));
+      float right = *buffer;
+      right_channelf.push_back(right);
     }
   } else {
     cerr << "Number of bytes " << bytesPerSamp << " unsupported in stereo" << endl;
@@ -202,8 +296,6 @@ void soundData::parse_header_and_body(const char * fileName)
   read_header(wavStream);
 
   //size_t blocksRead = fread(&wavHeader, 1, headerSize, wavFile);
-  size_t blocksRead = 0;
-  cout << "Header Read " << blocksRead << " bytes." << endl;
   bool testing = false;
   if (!testing)
   {
@@ -232,19 +324,16 @@ void soundData::parse_header_and_body(const char * fileName)
     terminate();
   }
 
-
-  cout << "File is                    :" << filelength << " bytes." << endl;
   cout << "RIFF header                :" << wavHeader.RIFF[0] << wavHeader.RIFF[1] << wavHeader.RIFF[2] << wavHeader.RIFF[3] << endl;
+  cout << "Data size                  :" << wavHeader.ChunkSize << endl;
   cout << "WAVE header                :" << wavHeader.WAVE[0] << wavHeader.WAVE[1] << wavHeader.WAVE[2] << wavHeader.WAVE[3] << endl;
   cout << "FMT                        :" << wavHeader.fmt[0] << wavHeader.fmt[1] << wavHeader.fmt[2] << wavHeader.fmt[3] << endl;
-  cout << "Data size                  :" << wavHeader.ChunkSize << endl;
-
+  cout << "Subchunk1 size (fmt chunk) :" << wavHeader.Subchunk1Size << endl;
   // Display the sampling Rate from the header
   cout << "Sampling Rate              :" << wavHeader.SamplesPerSec << endl;
   cout << "Number of bits per Samp    :" << wavHeader.bitsPerSample << endl;
   cout << "Number of channels         :" << wavHeader.NumOfChan << endl;
   cout << "Number of bytes per second :" << wavHeader.bytesPerSec << endl;
-  cout << "Data length                :" << wavHeader.Subchunk2Size << endl;
   cout << "Audio Format               :" << wavHeader.AudioFormat << endl;
   // Audio format 1=PCM,6=mulaw,7=alaw, 257=IBM Mu-Law, 258=IBM A-Law, 259=ADPCM
 
@@ -256,6 +345,24 @@ void soundData::parse_header_and_body(const char * fileName)
   wavStream.close();
 }
 
+vector<int> convert_vecf_to_veci(vector<float> f_vec){
+  #include <limits>
+  #include <algorithm>
+  auto minmax = minmax_element(f_vec.begin(), f_vec.end()); // C++11+
+  double max = *minmax.second;
+  double test = abs(*minmax.first); //The minimum value in the vector
+  if (test>max){
+    max = test;
+  }
+  double scale_factor = (numeric_limits<int>::max())/(max);
+  vector<int> i_vec;
+  for (int index = 0; index < f_vec.size(); index++) {
+    //cout << scale_factor << " :scale factor ||| adjusted value: " << (int) (scale_factor*f_vec[index]) << endl;
+    i_vec.push_back((int) (scale_factor*f_vec[index]));
+  }
+  return i_vec;
+}
+
 vector<int> soundData::retreiveWaveChannel(){
   if (!mono_channel.empty())
   {
@@ -264,6 +371,10 @@ vector<int> soundData::retreiveWaveChannel(){
   } else if (!left_channel.empty()) {
     cout << "Returning Left Channel Data" << endl;
     return left_channel;
+  } else if (!left_channelf.empty()){
+    cout << "Returning Left Channel Data, of FLOAT data type, cast to int" << endl;
+    vector<int> result = convert_vecf_to_veci(left_channelf);
+    return result;
   } else {
     cout << "Error in soundData::retreiveWaveChannel, no wave data found in object" << endl;
     cout << "Did you read a .wav before calling this function?" << endl;
