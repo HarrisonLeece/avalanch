@@ -19,6 +19,8 @@ vector<PSD>;
 #include "thread_pool.hpp"
 #include "matplot/matplot.h"
 #include <aubio/aubio.h>
+#include <iostream>
+#include <fstream>
 
 
 using namespace std;
@@ -59,12 +61,47 @@ class soundData
 
     //Declare class functions.  Remember soundData:: prefix to functions
     int getFileSize(FILE* inFile);
-    void parse_header_and_body(char * fileName);
+    void parse_header_and_body(const char * fileName);
     vector<int> retreiveWaveChannel();
-    void mono_parser();
-    void stereo_parser();
-
+    void mono_parser(uint16_t bytesPerSamp, fstream &wav);
+    void stereo_parser(uint16_t bytesPerSamp, fstream &wav);
+    void read_header(fstream &wav);
 };
+
+void soundData::read_header(fstream &wav){
+  //RIFF header
+  wav.read((char*)&wavHeader.RIFF, sizeof(wavHeader.RIFF));
+  //cout<<wavHeader.RIFF[0]<<wavHeader.RIFF[1]<<wavHeader.RIFF[2]<<wavHeader.RIFF[3]<<endl;
+  //ChunkSize
+  wav.read((char*)&wavHeader.ChunkSize, sizeof(wavHeader.ChunkSize));
+  //cout << wavHeader.ChunkSize << endl;
+  //Wave header
+  wav.read((char*)&wavHeader.WAVE, sizeof(wavHeader.WAVE));
+  //cout<<wavHeader.WAVE[0]<<wavHeader.WAVE[1]<<wavHeader.WAVE[2]<<wavHeader.WAVE[3]<<endl;
+  //fmt (check to make sure this is not junk and if it is... logic)
+  while(wav.peek()!='f'){
+    wav.ignore(1);
+  }
+  wav.read((char*)&wavHeader.fmt, sizeof(wavHeader.fmt));
+  //Data size (excluding the 16 bits from RIFF and WAVE)
+  wav.read((char*)&wavHeader.Subchunk1Size, sizeof(wavHeader.Subchunk1Size));
+  //Audio Format
+  wav.read((char*)&wavHeader.AudioFormat, sizeof(wavHeader.AudioFormat));
+  //Number of channels
+  wav.read((char*)&wavHeader.NumOfChan, sizeof(wavHeader.NumOfChan));
+  //Sample rate
+  wav.read((char*)&wavHeader.SamplesPerSec, sizeof(wavHeader.SamplesPerSec));
+  //Number of bytes per second (byte rate)
+  wav.read((char*)&wavHeader.bytesPerSec, sizeof(wavHeader.bytesPerSec));
+  //Block align (Bytes per Sample) (one channel, I think)
+  wav.read((char*)&wavHeader.blockAlign, sizeof(wavHeader.blockAlign));
+  //bitsPerSample
+  wav.read((char*)&wavHeader.bitsPerSample, sizeof(wavHeader.bitsPerSample));
+  //data length (IDFK)
+  wav.read((char*)&wavHeader.Subchunk2ID, sizeof(wavHeader.Subchunk2ID));
+  //Subchunk2Size
+  wav.read((char*)&wavHeader.Subchunk2Size, sizeof(wavHeader.Subchunk2Size));
+}
 
 // find the file size
 int soundData::getFileSize(FILE* inFile)
@@ -78,85 +115,123 @@ int soundData::getFileSize(FILE* inFile)
     return fileSize;
 }
 
+//if num channels = 1
+void soundData::mono_parser(uint16_t bytesPerSamp, fstream &wav){
+  //Switching for bytes per sample
+  size_t blocksRead = 1;
+  int trigger = 0;
 
-void soundData::parse_header_and_body(char * fileName)
-{
-
-  int headerSize = sizeof(wav_hdr), filelength = 0;
-
-
-  FILE* wavFile = fopen(fileName, "r");
-  if (wavFile == nullptr)
-  {
-      fprintf(stderr, "Unable to open wave file: %s\n", filePath);
-      return;
+  if (bytesPerSamp==1){
+    int8_t * buffer  = new int8_t[1];
+    while (!wav.eof()) {
+      wav.read((char*)buffer, sizeof(*buffer));
+      if (wav.eof()) { break; }
+      int left = *buffer;
+      mono_channel.push_back(left);
+    }
+  } else if (bytesPerSamp==2) {
+    int16_t * buffer  = new int16_t[1];
+    while (!wav.eof()) {
+      wav.read((char*)buffer, sizeof(*buffer));
+      if (wav.eof()) { break; }
+      int left = *buffer;
+      mono_channel.push_back(left);
+    }
+  } else if (bytesPerSamp==3) {
+    cerr << "Number of bytes " << bytesPerSamp << " unsupported" << endl;
+  } else if (bytesPerSamp==4) {
+    int32_t * buffer  = new int32_t[1];
+    while (blocksRead>0) {
+      wav.read((char*)buffer, sizeof(*buffer));
+      if (wav.eof()) { break; }
+      int left = *buffer;
+      mono_channel.push_back(left);
+    }
+  } else {
+    cerr << "Number of bytes " << bytesPerSamp << " unsupported" << endl;
   }
 
+}
+
+//if num channels = 2
+void soundData::stereo_parser(uint16_t bytesPerSamp, fstream &wav){
+  //Switching for bytes per sample
+  if (bytesPerSamp==1){
+    cerr << "Number of bytes " << bytesPerSamp << " unsupported in stereo" << endl;
+  } else if (bytesPerSamp==2) {
+    int16_t * buffer  = new int16_t[1];
+    //cout << bytesRead << endl;
+    while (!wav.eof()) {
+      if (wav.eof()) { break; }
+      wav.read((char*)buffer, sizeof(*buffer));
+      int left = *buffer;
+      left_channel.push_back(left);
+      if (wav.eof()) { break; } //This is just in case right and left channel has mismatching data for some reason 0_o
+      wav.read((char*)buffer, sizeof(*buffer));
+      int right = *buffer;
+      right_channel.push_back(right);
+    }
+  } else if (bytesPerSamp==3) {
+    cerr << "Number of bytes " << bytesPerSamp << " unsupported in stereo" << endl;
+  } else if (bytesPerSamp==4) {
+    int32_t * buffer  = new int32_t[1];
+    //cout << bytesRead << endl;
+    while (!wav.eof()) {
+      if (wav.eof()) { break; }
+      wav.read((char*)buffer, sizeof(*buffer));
+      int left = *buffer;
+      left_channel.push_back(left);
+      if (wav.eof()) { break; } //This is just in case right and left channel has mismatching data for some reason 0_o
+      wav.read((char*)buffer, sizeof(*buffer));
+      int right = *buffer;
+      right_channel.push_back(right);
+    }
+  } else {
+    cerr << "Number of bytes " << bytesPerSamp << " unsupported in stereo" << endl;
+  }
+}
+
+void soundData::parse_header_and_body(const char * fileName)
+{
+
+  int filelength = 0;
+
+  fstream wavStream;
+  wavStream.open(fileName, std::fstream::in | std::fstream::binary);
   //Read the header
-  size_t blocksRead = fread(&wavHeader, 1, headerSize, wavFile);
+  read_header(wavStream);
+
+  //size_t blocksRead = fread(&wavHeader, 1, headerSize, wavFile);
+  size_t blocksRead = 0;
   cout << "Header Read " << blocksRead << " bytes." << endl;
-
-
-
-  if (blocksRead > 0)
+  bool testing = false;
+  if (!testing)
   {
     //Read the data
     uint16_t bytesPerSample = wavHeader.bitsPerSample / 8;      //Number     of bytes per sample
+    cout << "Bytes per sample " << bytesPerSample << endl;
     uint64_t numSamples = wavHeader.ChunkSize / bytesPerSample; //How many samples are in the wav file?
+
     //static const uint16_t BUFFER_SIZE = 4096; //Why is this hardcoded
     //int8_t* buffer = new int8_t[wavHeader.NumOfChan];
 
     ////////////////
     //Get the data from the wav
     ////////////////
-    //
-    //It would probably be better to make a list of vectors and make a for loop
-    //WHich iterates #ofChanels times and get a vector in a list for each channel
-    if (bytesPerSample>2){
-      cout << "bytesPerSample: " << bytesPerSample << " is unsupported"  << endl;
-      return;
-    }
-    int16_t * buffer  = new int16_t[1];
 
-
-    int trigger = 0;
     //Every f read should read the data for one sample, and then store it to a vector
     if (wavHeader.NumOfChan == 2) {
-        cout << "Number of Channels = 2; Parsing as stereo" << endl;
-        int16_t * buffer  = new int16_t[1];
-        //cout << bytesRead << endl;
-        while (blocksRead>0) {
-          //I think there is a glitch in here maybe?
-          //originally was bytesRead = fread(buffer, bytesPerSample, bytesPerSample, wavFile);
-          blocksRead = fread(buffer, bytesPerSample, 1, wavFile);
-          //cout << "Read " << bytesRead << " bytes." << endl;
-          if (blocksRead != 1) { trigger = 1; }
-          int left = *buffer;
-          left_channel.push_back(left);
-          blocksRead = fread(buffer, bytesPerSample, 1, wavFile);
-          //cout << "Read " << bytesRead << " bytes." << endl;
-          int right = *buffer;
-          right_channel.push_back(right);
-          if (blocksRead != 1 || trigger == 1) { break; }
-
-
-
-        }
+      cout << "Number of Channels = 2; Parsing as stereo" << endl;
+      stereo_parser(bytesPerSample, wavStream);
     } else if (wavHeader.NumOfChan == 1) {
       cout << "Number of Channels = 1; Parsing as mono" << endl;
-      while (blocksRead>0) {
-        blocksRead = fread(buffer, 2, 2, wavFile);
-        if (blocksRead != wavHeader.blockAlign) { break; }
-        //cout << "Read " << bytesRead << " bytes." << endl;
-        int left = *buffer;
-        mono_channel.push_back(left);
-      }
-
+      mono_parser(bytesPerSample, wavStream);
     }
+  } else {
+    cerr << "Error parsing the header" << endl;
+    terminate();
   }
 
-
-  filelength = getFileSize(wavFile);
 
   cout << "File is                    :" << filelength << " bytes." << endl;
   cout << "RIFF header                :" << wavHeader.RIFF[0] << wavHeader.RIFF[1] << wavHeader.RIFF[2] << wavHeader.RIFF[3] << endl;
@@ -175,10 +250,10 @@ void soundData::parse_header_and_body(char * fileName)
 
   cout << "Block align(Bytes per samp):" << wavHeader.blockAlign << endl;
   cout << "Data string                :" << wavHeader.Subchunk2ID[0] << wavHeader.Subchunk2ID[1] << wavHeader.Subchunk2ID[2] << wavHeader.Subchunk2ID[3] << endl;
-
+  cout << "Subchunk2Size              :" << wavHeader.Subchunk2Size << endl;
 
   //Remember to close your file
-  fclose(wavFile);
+  wavStream.close();
 }
 
 vector<int> soundData::retreiveWaveChannel(){

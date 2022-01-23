@@ -231,6 +231,62 @@ void unitTests(int psdInSize)
   f4->draw();
 
   show();
+
+}
+
+/*
+Tests the fft, power spectrum and waveform
+on sine signals
+*/
+void unitTests32bit(int psdInSize)
+{
+  using namespace matplot; //we gon' do a lot of plotting
+  char* filePath;
+  filePath = "../tests/110Hz_44100Hz_32bit_05sec_waveform.wav";
+  int psdInSizePower = int(log2(psdInSize));
+  cout << psdInSizePower << endl;
+  vector<int> waveform(psdInSize);
+  vector<float> psd(psdInSize/2);
+
+
+  //load the 100hz data so I can access some file info
+  soundData clip_110hz;
+  clip_110hz.parse_header_and_body(filePath);
+  double modifier = (clip_110hz.wavHeader.SamplesPerSec)/pow(2,psdInSizePower+1);
+  vector<double> psdX = linspace(0,(psdInSize/2-1)*modifier,psdInSize/2);
+  vector<double> waveX = linspace(0,psdInSize-1, psdInSize);
+
+
+
+  auto f1 = figure(true);
+  f1->width(f1->width() * 2);
+  f1->height(f1->height() * 1);
+  f1->x_position(10);
+  f1->y_position(10);
+  hold(on);
+
+  waveform = sliceVectorInt(clip_110hz.retreiveWaveChannel(),0,psdInSize-1);
+
+  psd = power_spec_density(waveform, psdInSizePower);
+
+  //100 hz tests
+  subplot(2, 1, 0);
+  xlabel("Amplitude");
+
+  ylabel("Sample");
+  title("110hz waveform");
+  plot(waveX,waveform)->color({0.f, 0.7f, 0.9f});
+
+  subplot(2, 1, 1);
+  xlabel("Frequency");
+  xlim({0,200});
+  ylabel("Value");
+  title("110hz PSD");
+  plot(psdX,psd)->color({0.9f, 0.f, 0.1f});
+
+  f1->draw();
+
+  show();
 }
 
 int main()
@@ -245,9 +301,11 @@ int main()
 
     bool isTesting = true;
     if (isTesting) {
-      cout << "Tests starting" << endl;
-      unitTests(samplesPerPSD);
-      cout << "tests complete" << endl;
+      cout << "16 bit & PSD Tests starting" << endl;
+      //unitTests(samplesPerPSD);
+      cout << "Test 1 complete" << endl;
+      cout << "32 bit Tests starting" << endl;
+      unitTests32bit(samplesPerPSD);
       return 2;
     }
 
