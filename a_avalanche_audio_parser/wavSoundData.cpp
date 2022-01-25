@@ -63,6 +63,14 @@ typedef struct  smpl_HEADER
     uint32_t sampler_data;
 } smpl_hdr;
 
+typedef struct  data_HEADER
+{
+    //https://sites.google.com/site/musicgapi/technical-documents/wav-file-format#smpl
+    /* smpl format Chunk Descriptor */
+    uint32_t manufacturer;
+    uint32_t product;
+} data_hdr;
+
 typedef struct  WAV_HEADER_EXTENSIBLE
 {
     //http://www-mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
@@ -101,7 +109,7 @@ class soundData
     //Troubleshooting; but it will saturate the whole console cache
     //print_vector_to_console(left_channel);
 
-    bool float32 = false;
+    bool float32 = true;
 
     //Declare class functions.  Remember soundData:: prefix to functions
     int getFileSize(FILE* inFile);
@@ -145,8 +153,12 @@ void soundData::read_header(fstream &wav){
   wav.read((char*)&wavHeader.Subchunk2ID, sizeof(wavHeader.Subchunk2ID));
   //Subchunk2Size
   wav.read((char*)&wavHeader.Subchunk2Size, sizeof(wavHeader.Subchunk2Size));
-
-  if (wavHeader.AudioFormat != 1 && wavHeader.Subchunk2ID[0] == 's' && wavHeader.Subchunk2ID[1] == 'm' && wavHeader.Subchunk2ID[2] == 'p' && wavHeader.Subchunk2ID[3] == 'l')
+  if (wavHeader.AudioFormat == 1 ) {
+    return;
+  } else if (wavHeader.AudioFormat == 3 && wavHeader.Subchunk2ID[0] == 'd' && wavHeader.Subchunk2ID[1] == 'a' && wavHeader.Subchunk2ID[2] == 't' && wavHeader.Subchunk2ID[3] == 'a') {
+        return;
+  }
+  else if (wavHeader.AudioFormat != 1 && wavHeader.Subchunk2ID[0] == 's' && wavHeader.Subchunk2ID[1] == 'm' && wavHeader.Subchunk2ID[2] == 'p' && wavHeader.Subchunk2ID[3] == 'l')
   {
     cout << "Additional processing is needed as this header indicates an audio format not equal to 1 (PCM)" << endl;
     cout << "smpl format detected.  Used to encode extra midi data to wav" << endl;
@@ -164,13 +176,15 @@ void soundData::read_header(fstream &wav){
   }
   else {
     cout << "As of yet unsupported extensible wav data detected" << endl;
+    cout<<wavHeader.AudioFormat << endl;
     cout<<wavHeader.Subchunk2ID[0]<<wavHeader.Subchunk2ID[1]<<wavHeader.Subchunk2ID[2]<<wavHeader.Subchunk2ID[3]<<endl;
+    cout <<"Attempt to manually ignore useless bytes by editing line "<< __LINE__+3 << " in wavSoundData" << endl;
   }
-  bool testing = true;
+  bool remove_manually = false;
   size_t remove_bytes = 60;
   uint8_t extraData[remove_bytes];
 
-  if(testing){
+  if(remove_manually){
     cout << "removing extra data of size " << remove_bytes << " bytes" << endl;
     wav.read((char*)&extraData, sizeof(extraData));
   }
@@ -343,6 +357,7 @@ void soundData::parse_header_and_body(const char * fileName)
 
   //Remember to close your file
   wavStream.close();
+  cout << "Closed wavStream" << endl;
 }
 
 vector<int> convert_vecf_to_veci(vector<float> f_vec){

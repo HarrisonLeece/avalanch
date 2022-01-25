@@ -307,31 +307,32 @@ int main()
 
 
     char* filePath;
-    filePath = "../wavs/test1.wav";
+    filePath = "../wavs/input.wav";
 
     //create object to hold a bunch of important information
     //see wavSoundData.cpp file to implementation
-    soundData test_clip;
-    test_clip.parse_header_and_body(filePath);
+    soundData active_track;
+    active_track.parse_header_and_body(filePath);
 
+    vector<int> waveform = active_track.retreiveWaveChannel(); //*might* have to allocate on heap
 
 
     //get single fft data to check that its working correctly
-    //vector<float> test_fft_vec = create_single_fft_vector(test_clip.left_channel, samplesPerPSD);
+    //vector<float> test_fft_vec = create_single_fft_vector(waveform, samplesPerPSD);
 
     //SampleRate divided by frames per second
-    int samplesPerFrame = test_clip.wavHeader.SamplesPerSec/FRAMESPERSEC;
+    int samplesPerFrame = active_track.wavHeader.SamplesPerSec/FRAMESPERSEC;
 
 
-    int bytesPerSample = test_clip.wavHeader.bitsPerSample/8;
+    int bytesPerSample = active_track.wavHeader.bitsPerSample/8;
     //Define soundDataSample outside if statements
     //Subchunk2Size is a size in bits, if there are 2 channels, half the
     //subchunk2Size and divide by the number of bytesPerSample to get
     int soundDataSamples;
-    if (test_clip.wavHeader.NumOfChan == 1) {
-        soundDataSamples = int (test_clip.wavHeader.Subchunk2Size)/bytesPerSample;
-    } else if (test_clip.wavHeader.NumOfChan == 2) {
-        soundDataSamples = int (test_clip.wavHeader.Subchunk2Size/2)/bytesPerSample;
+    if (active_track.wavHeader.NumOfChan == 1) {
+        soundDataSamples = int (active_track.wavHeader.Subchunk2Size)/bytesPerSample;
+    } else if (active_track.wavHeader.NumOfChan == 2) {
+        soundDataSamples = int (active_track.wavHeader.Subchunk2Size/2)/bytesPerSample;
     }
 
     //total number of frames in the sound data, without regard for PSD beginning
@@ -361,7 +362,7 @@ int main()
 
     //How many samples are in the left_channel?  For a 10s clip @ 44,100 samp/second
     //=441,000  For troubleshooting
-    //cout << "Samples in test_clip.left_channel?: " << test_clip.left_channel.size() << endl;
+    //cout << "Samples in waveform?: " << waveform.size() << endl;
 
 
     bool testAnimation = false;
@@ -371,30 +372,32 @@ int main()
     /////////////////////////////
     if (testAnimation){
       //How many channels are there?  Interpret data accordingly
-      if (test_clip.wavHeader.NumOfChan==1) {
-        plot_mono_channel(test_clip.mono_channel);
+      if (active_track.wavHeader.NumOfChan==1) {
+        plot_mono_channel(waveform);
         auto animationFigure = matplot::figure();
         for (int i = startFrameDelay+1; i < numFramesInSound-endFrameHalt-1; i++){
           cout << i << endl;
           targetSample = i*samplesPerFrame;
           cout << "Target Sample: " << targetSample << endl;
 
-          copy(test_clip.mono_channel.begin()+targetSample-(samplesPerPSD/2 - 1), test_clip.mono_channel.begin()+targetSample+samplesPerPSD/2, tempWaveData.begin());
+          copy(waveform.begin()+targetSample-(samplesPerPSD/2 - 1), waveform.begin()+targetSample+samplesPerPSD/2, tempWaveData.begin());
           //animate_single_channel(tempWaveData, animationFigure, i);
         }
-      } else if (test_clip.wavHeader.NumOfChan==2) {
-        plot_stereo_channel(test_clip.left_channel, test_clip.right_channel);
+        exit(53);
+      } else if (active_track.wavHeader.NumOfChan==2) {
+        plot_stereo_channel(waveform, active_track.right_channel);
         auto animationFigure = matplot::figure();
         for (int i = startFrameDelay+1; i < numFramesInSound-endFrameHalt-1; i++){
           cout << i << endl;
           targetSample = i*samplesPerFrame;
           cout << "Target Sample: " << targetSample << endl;
-          //cout << "left channel size: " << test_clip.left_channel.size() << endl;
+          //cout << "left channel size: " << waveform.size() << endl;
 
-          copy(test_clip.left_channel.begin()+targetSample-(samplesPerPSD/2 - 1), test_clip.left_channel.begin()+targetSample+samplesPerPSD/2, tempWaveData.begin());
+          copy(waveform.begin()+targetSample-(samplesPerPSD/2 - 1), waveform.begin()+targetSample+samplesPerPSD/2, tempWaveData.begin());
 
           animate_single_channel(tempWaveData, animationFigure,i);
         }
+        exit(54);
       }
       cout << "Safely exited the animation loop" << endl;
     }
@@ -407,19 +410,19 @@ int main()
 
     //Set the paddings so that the written file knows how to sync video to PSDs
     timeWavePower.setFPS(FRAMESPERSEC);
-    timeWavePower.setSampFreq(test_clip.wavHeader.SamplesPerSec);
+    timeWavePower.setSampFreq(active_track.wavHeader.SamplesPerSec);
     timeWavePower.setPaddings(startFrameDelay, endFrameHalt);
-    timeWavePower.addWavetoTWP(test_clip.left_channel);
+    timeWavePower.addWavetoTWP(waveform);
 
 
     for (int i = startFrameDelay; i<numFramesInSound-endFrameHalt; i++) {
       targetSample = i*samplesPerFrame;
-      copy(test_clip.left_channel.begin()+targetSample-(samplesPerPSD/2 - 1), test_clip.left_channel.begin()+targetSample+samplesPerPSD/2, tempWaveData.begin());
+      copy(waveform.begin()+targetSample-(samplesPerPSD/2 - 1), waveform.begin()+targetSample+samplesPerPSD/2, tempWaveData.begin());
       fft_vec = create_single_fft_vector(tempWaveData, PSDPOWER);
       timeWavePower.addPSDtoTWP(fft_vec);
     }
 
-    cout << int(test_clip.wavHeader.SamplesPerSec) << endl;
+    cout << int(active_track.wavHeader.SamplesPerSec) << endl;
     //Now that data is loaded into the object, write to file
     timeWavePower.writeTWP();
     cout << "Number of PSDs: " << timeWavePower.numPSD << endl;
