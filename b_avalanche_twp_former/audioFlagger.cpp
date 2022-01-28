@@ -6,9 +6,11 @@
 #include <dirent.h>
 #include <fstream>
 #include "thread_pool.hpp"
+//Things for plottings
 #include "matplot/matplot.h"
 #include <aubio/aubio.h>
-#include "testingUtils.cpp"
+#include "testingUtils.cpp" //in libs
+#include "animationUtils.hpp" //in libs, strictly for making animations for production use
 #include <cmath>
 #include <assert.h>
 #include "vectorUtils.cpp"
@@ -70,13 +72,13 @@ vector<float> bandFiltration(vector<float> psdInput, float hzPerBin, float hzSta
 //Drum hits
 
 //diagnostic fxns
-void animatePSDs(vector<vector<float>> psdMatrix, int length, int padding) //length is the length of the animation.  !!!Should equal the size of the frames and times vectors!!!
+void animatePSDs(vector<vector<float>> psdMatrix, int length, int padding, vector<float> color) //length is the length of the animation.  !!!Should equal the size of the frames and times vectors!!!
 {
   cout << "This wack psd is sized " << psdMatrix.back().size() << endl;
   cout << psdMatrix.size() << endl;
   print_vector_to_console_float(psdMatrix.back());
   auto animationFigure = matplot::figure();
-  animationFigure -> size(666,777);
+  animationFigure -> size(2*666,2*777);
 
   string animationName = "flaggerPSD";
   vector<float> psd;
@@ -93,17 +95,17 @@ void animatePSDs(vector<vector<float>> psdMatrix, int length, int padding) //len
       assert (psdMatrix[i-padding].size() == psdSize); // so no bad aloc errors
       psd=psdMatrix[i-padding]; //This will segfault if i messed up the frame timing
       psd = sliceVectorFloat(psd, 5); //Cut off the zero hertz bin
-      animate_single_channelFloat(psd, animationFigure, i, animationName);
+      animate_single_channelFloat(psd, animationFigure, i, animationName, color);
     } else
     {
-      animate_single_channelFloat(fakePSD, animationFigure, i, animationName);
+      animate_single_channelFloat(fakePSD, animationFigure, i, animationName, color);
     }
   }
 }
-void animateWaves(int waveWidth, vector<int> waveform, int samplesPerFrame) //wave width is how much of the wave is displayed per frame.  Out of bound frames are handled by adding zeros
+void animateWaves(int waveWidth, vector<int> waveform, int samplesPerFrame, vector<float> color) //wave width is how much of the wave is displayed per frame.  Out of bound frames are handled by adding zeros
 {
   auto animationFigure = matplot::figure();
-  animationFigure -> size(888,444);
+  animationFigure -> size(2*888,2*444);
 
   string animationName = "flaggerWaveform";
   int padLength = ceil(waveWidth/(2.0*samplesPerFrame)); //Related to padding, like in PSD but is a different value based on how much of the waveform is displayed at a time
@@ -117,7 +119,7 @@ void animateWaves(int waveWidth, vector<int> waveform, int samplesPerFrame) //wa
     cout << "Target Sample: " << targetSample << endl;
     if (i>=padLength && i < (waveform.size()/samplesPerFrame - padLength)){
       copy(waveform.begin()+targetSample-(waveWidth/2 - 1), waveform.begin()+targetSample+waveWidth/2, tempWaveData.begin()); // I think I nailed it +/- some extra frames
-      animate_single_channel(tempWaveData, animationFigure, i, animationName);
+      animate_single_channel(tempWaveData, animationFigure, i, animationName, color);
     } else {
       // logic to fudge out of bounds frames here
       if (i<padLength) //pad the firstpart with zeros, last part with valid wav data
@@ -129,7 +131,7 @@ void animateWaves(int waveWidth, vector<int> waveform, int samplesPerFrame) //wa
         vector<int> waveBegPad(adder-samplesPerFrame,0); // Add this to the begining, so the waveform starts in the middle of the plot
         //concatenate something to waveBegPad (waveBegPad is the begining)
         frontTmpData.insert(frontTmpData.begin(), waveBegPad.begin(), waveBegPad.end());
-        animate_single_channel(frontTmpData, animationFigure, i, animationName);
+        animate_single_channel(frontTmpData, animationFigure, i, animationName, color);
       } else //pad the end with zeros
       {
         cout << "Padding end of vector with zeros to finish animation" << endl;
@@ -138,7 +140,7 @@ void animateWaves(int waveWidth, vector<int> waveform, int samplesPerFrame) //wa
         copy(waveform.begin()+targetSample-(waveWidth/2 - 1), waveform.begin()+targetSample+(waveWidth/2-(diff)), tempWaveData.begin()); // I think I nailed it +/- a couple of extra samples
         vector<int> waveEndPad(diff,0);
         //tempWaveData.push_back(waveEndPad);
-        animate_single_channel(tempWaveData, animationFigure, i, animationName);
+        animate_single_channel(tempWaveData, animationFigure, i, animationName, color);
       }
     }
   }
@@ -235,17 +237,62 @@ int main()
     return 1;
   }
 
-  bool plotting = true;
+  int plotting=2;
+  while (plotting != 1 || plotting != 0){
+    cout << "Enter 1 to plot, enter 0 to proceed to beat detection logic" << endl;
+    cin >> plotting;
+  }
+
   if (plotting)
   {
+    float r = -1;
+    float g = -1;
+    float b = -1;
+    while (r<0 || g<0 || b<0){
+      cout << "Enter PSD Red channel value: " << endl;
+      cin >> r;
+      cout << "Enter PSD Green channel value: " << endl;
+      cin >> g;
+      cout << "Enter PSD Blue channel value: " << endl;
+      cin >> b;
+      if ((r>=0 && r<=1) && (g>=0 && g<=1) && (b>=0 && b<=1)) {
+        cout << "Interpreted decimal input" << endl;
+      } else if ((r>1 && r<=255) || (g>1 && g<=255) || (b>1 && b<=255)){
+        cout << "Interpreted 1byte integer inputs.  Converting." << endl;
+        r = r/255.0; g = g/255.0; b = b/255.0;
+      } else {
+        r = -1;
+        cout << "Cannot understand input; re-requesting" << endl;
+      }
+    }
+    vector<float> psdColor = {r,g,b};
+    r = -1; g = -1; b = -1;
+    while (r<0 || g<0 || b<0){
+      cout << "Enter Waveform Red channel value: " << endl;
+      cin >> r;
+      cout << "Enter Waveform Green channel value: " << endl;
+      cin >> g;
+      cout << "Enter Waveform Blue channel value: " << endl;
+      cin >> b;
+      if ((r>=0 && r<=1) && (g>=0 && g<=1) && (b>=0 && b<=1)) {
+        cout << "Interpreted decimal input" << endl;
+      } else if ((r>1 && r<=255) || (g>1 && g<=255) || (b>1 && b<=255)){
+        cout << "Interpreted 1byte integer inputs.  Converting." << endl;
+        r = r/255.0; g = g/255.0; b = b/255.0;
+      } else {
+        r = -1;
+        cout << "Cannot understand input; re-requesting" << endl;
+      }
+    }
+    vector<float> waveColor = {r,g,b};
     cout << "Num PSDs in psdMetaVector " << timeWavePower.numPSD << endl;
     cout << "End padding " << timeWavePower.endPadding << endl;
 
-    animatePSDs(timeWavePower.psdMetaVector, frames.size(),timeWavePower.startPadding);
-    //animateWaves(waveformParam, timeWavePower.waveform, sampPerFrame);
+    animatePSDs(timeWavePower.psdMetaVector, frames.size(),timeWavePower.startPadding, psdColor);
+    animateWaves(waveformParam, timeWavePower.waveform, sampPerFrame, waveColor);
 
 
-    return 55;
+    return 44;
   }
 
   //instantiate a vecto of ints outside of loop to hold beats
