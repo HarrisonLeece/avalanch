@@ -17,9 +17,10 @@ else
 fi
 
 #Create twp files from a .wav
-./a_avalanche_audio_parser/build_and_run.sh
+cd ./a_avalanche_audio_parser/
+./build_and_run.sh
 wait
-
+cd ..
 #Check for a .twp file
 TWP=./twp_files/output.twp
 if test -f "$TWP"; then
@@ -65,8 +66,10 @@ else
 fi
 
 #Create the plots
-./b_avalanche_twp_former/runAudioFlagger.sh
+cd ./b_avalanche_twp_former
+./runAudioFlagger.sh
 wait
+cd ..
 
 #Process the .svgs into transparent alpha pngs
 ./forloop_inkscape_svg_convert_transparent.sh

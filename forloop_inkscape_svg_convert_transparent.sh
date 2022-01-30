@@ -1,5 +1,15 @@
-echo "Enter the number (integer) of frames in the video (should be half of plot_saves).  This input will be used for both PSD and Waveform processing"
-read frames
+#find number of files in plot saves
+cd ./b_avalanche_twp_former/plot_saves
+shopt -s nullglob
+numfiles=(*)
+numfiles=${#numfiles[@]}
+cd ../..
+types=2
+
+numwaves=$((numfiles/types))
+echo $numwaves
+echo "Enter the number (integer) of frames in the video (should be half of plot_saves).  This input will be used for both PSD and Waveform processing, or wait to use the default value above"
+read -t 180 -p "Number of frames: " -e -i $numwaves frames || frames=$numwaves
 if [[ ! $frames =~ ^[0-9]+$ ]] ; then
     echo "Not a valid input"
     exit

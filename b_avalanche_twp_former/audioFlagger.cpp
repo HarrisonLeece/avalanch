@@ -238,7 +238,7 @@ int main()
   }
 
   int plotting=2;
-  while (plotting != 1 || plotting != 0){
+  while (plotting != 1 && plotting != 0){
     cout << "Enter 1 to plot, enter 0 to proceed to beat detection logic" << endl;
     cin >> plotting;
   }

@@ -9,6 +9,7 @@
 #include "matplot/matplot.h"
 #include <aubio/aubio.h>
 #include "testingUtils.cpp"
+#include "animationUtils.hpp"
 #include <cmath>
 #include <math.h>
 #include "wavSoundData.cpp"
@@ -295,7 +296,7 @@ int main()
     //16384 =2^14 produces ~8300 ffts bins
     int samplesPerPSD = pow(2,PSDPOWER);
 
-    bool isTesting = true;
+    bool isTesting = false;
     if (isTesting) {
       cout << "16 bit & PSD Tests starting" << endl;
       unitTests(samplesPerPSD);
